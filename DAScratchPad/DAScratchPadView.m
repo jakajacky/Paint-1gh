@@ -9,6 +9,8 @@
 #import "DAScratchPadView.h"
 #import <QuartzCore/QuartzCore.h>
 
+#define PaintWithGPU 1
+
 @interface DAScratchPadView ()
 {
     CGFloat _drawOpacity;
@@ -23,6 +25,13 @@
     CGPoint airbrushPoint;
     NSTimer* airBrushTimer;
     UIImage* airBrushImage;
+    NSArray *points_ter;
+    CADisplayLink *link;
+    NSTimer *timer;
+    int j;
+    
+    CAShapeLayer *_slayer;
+    UIBezierPath *_path;
 }
 
 @property (nonatomic, strong) NSUndoManager *undoManager;
@@ -53,6 +62,22 @@
 	airBrushImage = nil;
 	[self.layer addSublayer:drawLayer];
 	[self clearToColor:self.backgroundColor];
+    
+    
+    _path = [[UIBezierPath alloc] init];
+    _path.lineWidth = 5;
+    _path.lineCapStyle = kCGLineCapRound; //线条拐角
+    _path.lineJoinStyle = kCGLineCapRound; //终点处理
+    
+    _slayer = [CAShapeLayer layer];
+    _slayer.path = _path.CGPath;
+    _slayer.backgroundColor = [UIColor clearColor].CGColor;
+    _slayer.fillColor = [UIColor clearColor].CGColor;
+    _slayer.lineCap = kCALineCapRound;
+    _slayer.lineJoin = kCALineJoinRound;
+    _slayer.strokeColor = [UIColor blackColor].CGColor;
+    _slayer.lineWidth = _path.lineWidth;
+    [drawLayer addSublayer:_slayer];
 }
 
 - (id) initWithFrame:(CGRect)frame {
@@ -84,6 +109,7 @@
 {
 	_drawOpacity = drawOpacity;
 	drawLayer.opacity = _drawOpacity;
+    _slayer.opacity = _drawOpacity;
 }
 
 - (CGFloat) airBrushFlow
@@ -115,28 +141,33 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
                                   @"y":@(mid2.y)};
     [_points addObject:point_start];
     [_points addObject:point_end];
-    
-	UIGraphicsBeginImageContext(self.frame.size);
-	CGContextRef ctx = UIGraphicsGetCurrentContext();
-	CGContextScaleCTM(ctx, 1.0f, -1.0f);
-	CGContextTranslateCTM(ctx, 0.0f, -self.frame.size.height);
-	if (drawImage != nil) {
-		CGRect rect = CGRectMake(0.0f, 0.0f, self.frame.size.width, self.frame.size.height);
-		CGContextDrawImage(ctx, rect, drawImage.CGImage);
-	}
-    CGContextSetLineCap(ctx, kCGLineCapRound);
-    CGContextSetLineJoin(ctx, kCGLineJoinRound);
-	CGContextSetLineWidth(ctx, width);
-	CGContextSetStrokeColorWithColor(ctx, self.drawColor.CGColor);
+    if (PaintWithGPU) {
+        [_path moveToPoint:mid1];
+        [_path addQuadCurveToPoint:mid2 controlPoint:lastPoint];
+    }
+    else {
+        UIGraphicsBeginImageContext(self.frame.size);
+        CGContextRef ctx = UIGraphicsGetCurrentContext();
+        CGContextScaleCTM(ctx, 1.0f, -1.0f);
+        CGContextTranslateCTM(ctx, 0.0f, -self.frame.size.height);
+        if (drawImage != nil) {
+            CGRect rect = CGRectMake(0.0f, 0.0f, self.frame.size.width, self.frame.size.height);
+            CGContextDrawImage(ctx, rect, drawImage.CGImage);
+        }
+        CGContextSetLineCap(ctx, kCGLineCapRound);
+        CGContextSetLineJoin(ctx, kCGLineJoinRound);
+        CGContextSetLineWidth(ctx, width);
+        CGContextSetStrokeColorWithColor(ctx, self.drawColor.CGColor);
 
-    CGContextMoveToPoint(ctx, mid1.x, mid1.y);
-    CGContextAddQuadCurveToPoint(ctx, lastPoint.x, lastPoint.y, mid2.x, mid2.y);
+        CGContextMoveToPoint(ctx, mid1.x, mid1.y);
+        CGContextAddQuadCurveToPoint(ctx, lastPoint.x, lastPoint.y, mid2.x, mid2.y);
 
-	CGContextStrokePath(ctx);
-	CGContextFlush(ctx);
-	drawImage = UIGraphicsGetImageFromCurrentImageContext();
-	UIGraphicsEndImageContext();
-	drawLayer.contents = (id)drawImage.CGImage;
+        CGContextStrokePath(ctx);
+        CGContextFlush(ctx);
+        drawImage = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+        drawLayer.contents = (id)drawImage.CGImage;
+    }
 }
 
 - (void) drawImage:(UIImage*)image at:(CGPoint)point
@@ -216,16 +247,19 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
     [_points removeAllObjects];
 	drawLayer.opacity = self.drawOpacity;
 	[self drawLineFrom:lastPoint to:lastPoint width:self.drawWidth begin:NO];
+    _slayer.path = _path.CGPath;
 }
 
 - (void)paintTouchesMoved
 {
 	[self drawLineFrom:lastPoint to:currentPoint width:self.drawWidth begin:YES];
+    if (PaintWithGPU && !_isAutoPlay) {
+        _slayer.path = _path.CGPath;
+    }
 }
 
 - (void) paintTouchesEnded
 {
-//    NSDictionary *path = [NSDictionary dictionaryWithObject:_points forKey:@"coor"];
     NSMutableDictionary *path = [NSMutableDictionary dictionary];
     [path setValue:[_points copy] forKey:@"coor"];
     NSLog(@"地址%p",path);
@@ -283,27 +317,59 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 }
 
 - (void)autoDraw:(NSArray *)paths {
-    for (int i = 0; i<paths.count; i++) {
+    _isAutoPlay = YES;
+    __block int i = 0;
+    timer = [NSTimer scheduledTimerWithTimeInterval:1/60.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
+        if (i>=paths.count) {
+            [timer invalidate];
+            return;
+        }
         NSDictionary *path = paths[i];
-        NSArray *points = path[@"coor"];
+        points_ter = path[@"coor"];
         // Brgan
-        NSDictionary *point_first = points[0];
+        NSDictionary *point_first = points_ter[0];
         lastPoint = CGPointMake([point_first[@"x"] floatValue], [point_first[@"y"] floatValue]);
         previousPoint1 = CGPointMake([point_first[@"x"] floatValue], [point_first[@"y"] floatValue]);
         [self paintTouchesBegan];
         // Move
-        for (int j = 1; j<points.count; j++) {
-            NSDictionary *point = points[j];
+        for (int j = 1; j<points_ter.count; j++) {
+            NSDictionary *point = points_ter[j];
             currentPoint = CGPointMake([point[@"x"] floatValue], [point[@"y"] floatValue]);
             [self paintTouchesMoved];
             
             previousPoint1 = lastPoint;
             lastPoint = currentPoint;
         }
+        _slayer.path = _path.CGPath;
+        CABasicAnimation *pathAnimation = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+        pathAnimation = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+        pathAnimation.duration = 3.37;
+        pathAnimation.repeatCount = 1;
+        pathAnimation.fromValue = [NSNumber numberWithFloat:0.0f];
+        pathAnimation.toValue = [NSNumber numberWithFloat:1.0f];
+        [_slayer addAnimation:pathAnimation forKey:@"strokeEnd"];
         // End
         [self paintTouchesEnded];
         
+        i += 1;
+    }];
+    
+}
+
+- (void)move {
+    if (j>=points_ter.count) {
+        j=0;
+        [link invalidate];
+        return;
     }
+    NSDictionary *point = points_ter[j];
+    currentPoint = CGPointMake([point[@"x"] floatValue], [point[@"y"] floatValue]);
+    [self paintTouchesMoved];
+    
+    previousPoint1 = lastPoint;
+    lastPoint = currentPoint;
+    
+    j++;
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
@@ -316,8 +382,12 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 	UITouch *touch = [touches anyObject];
 	lastPoint = [touch locationInView:self];
     previousPoint1 = [touch locationInView:self];
-    previousPoint1.y = self.frame.size.height - previousPoint1.y;
-	lastPoint.y = self.frame.size.height - lastPoint.y;
+    if (PaintWithGPU) {
+    }
+    else {
+        previousPoint1.y = self.frame.size.height - previousPoint1.y;
+        lastPoint.y = self.frame.size.height - lastPoint.y;
+    }
 	
 	if (self.toolType == DAScratchPadToolTypePaint) {
 		[self paintTouchesBegan];
@@ -336,7 +406,11 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 
 	UITouch *touch = [touches anyObject];	
 	currentPoint = [touch locationInView:self];
-	currentPoint.y = self.frame.size.height - currentPoint.y;
+    if (PaintWithGPU) {
+    }
+    else {
+        currentPoint.y = self.frame.size.height - currentPoint.y;
+    }
 
 	if (self.toolType == DAScratchPadToolTypePaint) {
 		[self paintTouchesMoved];

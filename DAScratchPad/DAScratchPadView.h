@@ -23,6 +23,8 @@ typedef enum {
 @property (assign) CGFloat airBrushFlow;
 @property (nonatomic, strong) NSMutableArray *paths;
 
+@property (nonatomic, assign) BOOL isAutoPlay;
+
 - (void) clearToColor:(UIColor*)color;
 
 - (UIImage*) getSketch;
