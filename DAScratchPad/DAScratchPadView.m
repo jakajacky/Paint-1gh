@@ -64,6 +64,19 @@
 	[self clearToColor:self.backgroundColor];
     
     
+    
+    
+    [self initShapeLayer];
+}
+
+- (id) initWithFrame:(CGRect)frame {
+    if ((self = [super initWithFrame:frame])) {
+		[self initCommon];
+	}
+    return self;
+}
+
+- (void)initShapeLayer {
     _path = [[UIBezierPath alloc] init];
     _path.lineWidth = 5;
     _path.lineCapStyle = kCGLineCapRound; //线条拐角
@@ -76,15 +89,9 @@
     _slayer.lineCap = kCALineCapRound;
     _slayer.lineJoin = kCALineJoinRound;
     _slayer.strokeColor = [UIColor blackColor].CGColor;
+    _slayer.opacity = self.drawOpacity;
     _slayer.lineWidth = _path.lineWidth;
     [drawLayer addSublayer:_slayer];
-}
-
-- (id) initWithFrame:(CGRect)frame {
-    if ((self = [super initWithFrame:frame])) {
-		[self initCommon];
-	}
-    return self;
 }
 
 - (id) initWithCoder:(NSCoder *)decoder
@@ -108,7 +115,6 @@
 - (void) setDrawOpacity:(CGFloat)drawOpacity
 {
 	_drawOpacity = drawOpacity;
-	drawLayer.opacity = _drawOpacity;
     _slayer.opacity = _drawOpacity;
 }
 
@@ -244,10 +250,9 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 
 - (void)paintTouchesBegan
 {
-    [_points removeAllObjects];
-	drawLayer.opacity = self.drawOpacity;
 	[self drawLineFrom:lastPoint to:lastPoint width:self.drawWidth begin:NO];
     _slayer.path = _path.CGPath;
+    _slayer.strokeColor = self.drawColor.CGColor;
 }
 
 - (void)paintTouchesMoved
@@ -264,7 +269,12 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
     [path setValue:[_points copy] forKey:@"coor"];
     NSLog(@"地址%p",path);
     [_paths addObject:path];
-	[self commitDrawingWithOpacity:self.drawOpacity];
+    if (PaintWithGPU) {
+        [self initShapeLayer];
+    }
+    else {
+        [self commitDrawingWithOpacity:self.drawOpacity];
+    }
 }
 
 - (void) airBrushTimerExpired:(NSTimer*)timer
@@ -319,9 +329,12 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 - (void)autoDraw:(NSArray *)paths {
     _isAutoPlay = YES;
     __block int i = 0;
-    timer = [NSTimer scheduledTimerWithTimeInterval:1/60.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
+    timer = [NSTimer scheduledTimerWithTimeInterval:0.75 repeats:YES block:^(NSTimer * _Nonnull timer) {
         if (i>=paths.count) {
             [timer invalidate];
+            timer = nil;
+            _isAutoPlay = NO;
+            [self initShapeLayer];
             return;
         }
         NSDictionary *path = paths[i];
@@ -341,9 +354,27 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
             lastPoint = currentPoint;
         }
         _slayer.path = _path.CGPath;
+        switch (i%5) {
+            case 0:
+                _slayer.strokeColor = [UIColor colorWithWhite:0 alpha:1].CGColor;
+                break;
+            case 1:
+                _slayer.strokeColor = [UIColor redColor].CGColor;
+                break;
+            case 2:
+                _slayer.strokeColor = [UIColor blueColor].CGColor;
+                break;
+            case 3:
+                _slayer.strokeColor = [UIColor greenColor].CGColor;
+                break;
+            case 4:
+                _slayer.strokeColor = [UIColor yellowColor].CGColor;
+            default:
+                break;
+        }
         CABasicAnimation *pathAnimation = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
         pathAnimation = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-        pathAnimation.duration = 3.37;
+        pathAnimation.duration = 0.75;
         pathAnimation.repeatCount = 1;
         pathAnimation.fromValue = [NSNumber numberWithFloat:0.0f];
         pathAnimation.toValue = [NSNumber numberWithFloat:1.0f];
@@ -353,7 +384,7 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
         
         i += 1;
     }];
-    
+    [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
 }
 
 - (void)move {
