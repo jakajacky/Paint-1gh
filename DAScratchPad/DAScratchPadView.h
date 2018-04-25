@@ -21,10 +21,13 @@ typedef enum {
 @property (assign) CGFloat drawWidth;
 @property (assign) CGFloat drawOpacity;
 @property (assign) CGFloat airBrushFlow;
+@property (nonatomic, strong) NSMutableArray *paths;
 
 - (void) clearToColor:(UIColor*)color;
 
 - (UIImage*) getSketch;
 - (void) setSketch:(UIImage*)sketch;
+
+- (void)autoDraw:(NSArray *)paths;
 
 @end

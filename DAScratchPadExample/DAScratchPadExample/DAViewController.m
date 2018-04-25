@@ -9,7 +9,7 @@
 #import "DAViewController.h"
 #import "DAScratchPadView.h"
 #import <QuartzCore/QuartzCore.h>
-
+#import "NSArray+JSON.h"
 @interface DAViewController ()
 @property (unsafe_unretained, nonatomic) IBOutlet DAScratchPadView *scratchPad;
 @property (unsafe_unretained, nonatomic) IBOutlet UISlider *airbrushFlowSlider;
@@ -39,6 +39,8 @@
 	if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPhone) {
 		self.airbrushFlowSlider.transform = CGAffineTransformTranslate(CGAffineTransformMakeRotation(-M_PI/2.0f), -30.0f, -35.0f);
 	}
+    
+    [self read];
 }
 
 - (void)didReceiveMemoryWarning
@@ -97,6 +99,41 @@
 {
 	UISlider* slider = (UISlider*)sender;
 	self.scratchPad.airBrushFlow = slider.value;
+}
+
+- (IBAction)save:(id)sender {
+    NSArray *paths = self.scratchPad.paths;
+    NSString *str = [paths toReadableJSONString];
+    
+    NSFileManager *manager = [NSFileManager defaultManager];
+    NSArray *path = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *documents = [path objectAtIndex:0];
+    NSString *filepath = [documents stringByAppendingPathComponent:@"paths.txt"];
+    if ([manager createFileAtPath:filepath contents:nil attributes:nil]) {
+        printf("文件创建成功");
+    }
+    else {
+        printf("文件创建失败");
+    }
+    if (!documents) {
+        printf("没有找到目录");
+    }
+    if ([str writeToFile:filepath atomically:YES encoding:NSUTF8StringEncoding error:nil]) {
+        printf("文件写入成功");
+    }
+}
+
+- (void)read {
+    NSArray *path = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString *documents = [path objectAtIndex:0];
+    NSString *filepath = [documents stringByAppendingPathComponent:@"paths.txt"];
+    NSString *str = [NSString stringWithContentsOfFile:filepath encoding:NSUTF8StringEncoding error:nil];
+    
+    NSArray *paths = [NSArray stringToJSON:str];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self.scratchPad autoDraw:paths];
+    });
 }
 
 @end

@@ -26,6 +26,7 @@
 }
 
 @property (nonatomic, strong) NSUndoManager *undoManager;
+@property (nonatomic, strong) NSMutableArray *points;
 
 -(void)undo;
 
@@ -36,6 +37,9 @@
 
 - (void) initCommon
 {
+    _paths = [NSMutableArray array];
+    _points = [NSMutableArray array];
+    
 	_toolType = DAScratchPadToolTypePaint;
 	_drawColor = [UIColor blackColor];
 	_drawWidth = 5.0f;
@@ -103,6 +107,15 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
     NSLog(@"开始：(%f,%f) ++ 结束：(%f,%f)",from.x,from.y, to.x,to.y);
     CGPoint mid1 = midPoint1(from, previousPoint1);
     CGPoint mid2 = midPoint1(from, to);
+    
+    // 保存数据
+    NSDictionary *point_start = @{@"x":@(mid1.x),
+                                  @"y":@(mid1.y)};
+    NSDictionary *point_end   = @{@"x":@(mid2.x),
+                                  @"y":@(mid2.y)};
+    [_points addObject:point_start];
+    [_points addObject:point_end];
+    
 	UIGraphicsBeginImageContext(self.frame.size);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 	CGContextScaleCTM(ctx, 1.0f, -1.0f);
@@ -200,6 +213,7 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 
 - (void)paintTouchesBegan
 {
+    [_points removeAllObjects];
 	drawLayer.opacity = self.drawOpacity;
 	[self drawLineFrom:lastPoint to:lastPoint width:self.drawWidth begin:NO];
 }
@@ -211,6 +225,11 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 
 - (void) paintTouchesEnded
 {
+//    NSDictionary *path = [NSDictionary dictionaryWithObject:_points forKey:@"coor"];
+    NSMutableDictionary *path = [NSMutableDictionary dictionary];
+    [path setValue:[_points copy] forKey:@"coor"];
+    NSLog(@"地址%p",path);
+    [_paths addObject:path];
 	[self commitDrawingWithOpacity:self.drawOpacity];
 }
 
@@ -263,6 +282,30 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 	[self commitDrawingWithOpacity:self.drawOpacity];
 }
 
+- (void)autoDraw:(NSArray *)paths {
+    for (int i = 0; i<paths.count; i++) {
+        NSDictionary *path = paths[i];
+        NSArray *points = path[@"coor"];
+        // Brgan
+        NSDictionary *point_first = points[0];
+        lastPoint = CGPointMake([point_first[@"x"] floatValue], [point_first[@"y"] floatValue]);
+        previousPoint1 = CGPointMake([point_first[@"x"] floatValue], [point_first[@"y"] floatValue]);
+        [self paintTouchesBegan];
+        // Move
+        for (int j = 1; j<points.count; j++) {
+            NSDictionary *point = points[j];
+            currentPoint = CGPointMake([point[@"x"] floatValue], [point[@"y"] floatValue]);
+            [self paintTouchesMoved];
+            
+            previousPoint1 = lastPoint;
+            lastPoint = currentPoint;
+        }
+        // End
+        [self paintTouchesEnded];
+        
+    }
+}
+
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
 {
 	if (!self.userInteractionEnabled) {
@@ -273,9 +316,7 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 	UITouch *touch = [touches anyObject];
 	lastPoint = [touch locationInView:self];
     previousPoint1 = [touch locationInView:self];
-    previousPoint2 = [touch locationInView:self];
     previousPoint1.y = self.frame.size.height - previousPoint1.y;
-    previousPoint2.y = self.frame.size.height - previousPoint2.y;
 	lastPoint.y = self.frame.size.height - lastPoint.y;
 	
 	if (self.toolType == DAScratchPadToolTypePaint) {
