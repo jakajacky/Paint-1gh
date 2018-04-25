@@ -9,19 +9,30 @@
 #import "DAScratchPadView.h"
 #import <QuartzCore/QuartzCore.h>
 
-@implementation DAScratchPadView
+@interface DAScratchPadView ()
 {
-	CGFloat _drawOpacity;
-	CGFloat _airBrushFlow;
-	CALayer* drawLayer;
-	UIImage* mainImage;
-	UIImage* drawImage;
-	CGPoint lastPoint;
-	CGPoint currentPoint;
-	CGPoint airbrushPoint;
-	NSTimer* airBrushTimer;
-	UIImage* airBrushImage;
+    CGFloat _drawOpacity;
+    CGFloat _airBrushFlow;
+    CALayer* drawLayer;
+    UIImage* mainImage;
+    UIImage* drawImage;
+    CGPoint currentPoint;   // 当前point
+    CGPoint lastPoint;      // 前一个point
+    CGPoint previousPoint1; // 前前一个point
+    CGPoint previousPoint2;
+    CGPoint airbrushPoint;
+    NSTimer* airBrushTimer;
+    UIImage* airBrushImage;
 }
+
+@property (nonatomic, strong) NSUndoManager *undoManager;
+
+-(void)undo;
+
+@end
+
+@implementation DAScratchPadView
+@synthesize undoManager;
 
 - (void) initCommon
 {
@@ -81,8 +92,17 @@
 	_airBrushFlow = MIN(MAX(airBrushFlow, 0.0f), 1.0f);
 }
 
-- (void) drawLineFrom:(CGPoint)from to:(CGPoint)to width:(CGFloat)width
+// 计算中间点
+CGPoint midPoint1(CGPoint p1, CGPoint p2)
 {
+    return CGPointMake((p1.x + p2.x) * 0.5, (p1.y + p2.y) * 0.5);
+}
+
+- (void) drawLineFrom:(CGPoint)from to:(CGPoint)to width:(CGFloat)width begin:(BOOL)isbegin
+{
+    NSLog(@"开始：(%f,%f) ++ 结束：(%f,%f)",from.x,from.y, to.x,to.y);
+    CGPoint mid1 = midPoint1(from, previousPoint1);
+    CGPoint mid2 = midPoint1(from, to);
 	UIGraphicsBeginImageContext(self.frame.size);
 	CGContextRef ctx = UIGraphicsGetCurrentContext();
 	CGContextScaleCTM(ctx, 1.0f, -1.0f);
@@ -91,11 +111,14 @@
 		CGRect rect = CGRectMake(0.0f, 0.0f, self.frame.size.width, self.frame.size.height);
 		CGContextDrawImage(ctx, rect, drawImage.CGImage);
 	}
-	CGContextSetLineCap(ctx, kCGLineCapRound);
+    CGContextSetLineCap(ctx, kCGLineCapRound);
+    CGContextSetLineJoin(ctx, kCGLineJoinRound);
 	CGContextSetLineWidth(ctx, width);
 	CGContextSetStrokeColorWithColor(ctx, self.drawColor.CGColor);
-	CGContextMoveToPoint(ctx, from.x, from.y);
-	CGContextAddLineToPoint(ctx, to.x, to.y);
+
+    CGContextMoveToPoint(ctx, mid1.x, mid1.y);
+    CGContextAddQuadCurveToPoint(ctx, lastPoint.x, lastPoint.y, mid2.x, mid2.y);
+
 	CGContextStrokePath(ctx);
 	CGContextFlush(ctx);
 	drawImage = UIGraphicsGetImageFromCurrentImageContext();
@@ -178,12 +201,12 @@
 - (void)paintTouchesBegan
 {
 	drawLayer.opacity = self.drawOpacity;
-	[self drawLineFrom:lastPoint to:lastPoint width:self.drawWidth];
+	[self drawLineFrom:lastPoint to:lastPoint width:self.drawWidth begin:NO];
 }
 
 - (void)paintTouchesMoved
 {
-	[self drawLineFrom:lastPoint to:currentPoint width:self.drawWidth];
+	[self drawLineFrom:lastPoint to:currentPoint width:self.drawWidth begin:YES];
 }
 
 - (void) paintTouchesEnded
@@ -249,6 +272,10 @@
 	
 	UITouch *touch = [touches anyObject];
 	lastPoint = [touch locationInView:self];
+    previousPoint1 = [touch locationInView:self];
+    previousPoint2 = [touch locationInView:self];
+    previousPoint1.y = self.frame.size.height - previousPoint1.y;
+    previousPoint2.y = self.frame.size.height - previousPoint2.y;
 	lastPoint.y = self.frame.size.height - lastPoint.y;
 	
 	if (self.toolType == DAScratchPadToolTypePaint) {
@@ -277,6 +304,7 @@
 		[self airBrushTouchesMoved];
 	}
 
+    previousPoint1 = lastPoint;
 	lastPoint = currentPoint;
 }
 
