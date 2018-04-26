@@ -9,7 +9,7 @@
 #import "DAScratchPadView.h"
 #import <QuartzCore/QuartzCore.h>
 
-#define PaintWithGPU 1   // GPU硬件加速使之线条更细腻、但是笔画多了之后手机发烫，卡顿
+#define PaintWithGPU 0   // GPU硬件加速使之线条更细腻、但是笔画多了之后手机发烫，卡顿
 
 @interface DAScratchPadView ()
 {
@@ -116,7 +116,12 @@
 - (void) setDrawOpacity:(CGFloat)drawOpacity
 {
 	_drawOpacity = drawOpacity;
-    _slayer.opacity = _drawOpacity;
+    if (PaintWithGPU) {
+        _slayer.opacity = _drawOpacity;
+    }
+    else {
+        drawLayer.opacity = _drawOpacity;
+    }
 }
 
 - (CGFloat) airBrushFlow
@@ -252,8 +257,10 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
 - (void)paintTouchesBegan
 {
 	[self drawLineFrom:lastPoint to:lastPoint width:self.drawWidth begin:NO];
-    _slayer.path = _path.CGPath;
-    _slayer.strokeColor = self.drawColor.CGColor;
+    if (PaintWithGPU) {
+        _slayer.path = _path.CGPath;
+        _slayer.strokeColor = self.drawColor.CGColor;
+    }
 }
 
 - (void)paintTouchesMoved
