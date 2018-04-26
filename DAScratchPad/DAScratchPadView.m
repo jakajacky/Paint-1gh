@@ -9,7 +9,7 @@
 #import "DAScratchPadView.h"
 #import <QuartzCore/QuartzCore.h>
 
-#define PaintWithGPU 1
+#define PaintWithGPU 1   // GPU硬件加速使之线条更细腻、但是笔画多了之后手机发烫，卡顿
 
 @interface DAScratchPadView ()
 {
@@ -28,6 +28,7 @@
     NSArray *points_ter;
     CADisplayLink *link;
     NSTimer *timer;
+    NSTimer *timer_point;
     int j;
     
     CAShapeLayer *_slayer;
@@ -345,52 +346,65 @@ CGPoint midPoint1(CGPoint p1, CGPoint p2)
         previousPoint1 = CGPointMake([point_first[@"x"] floatValue], [point_first[@"y"] floatValue]);
         [self paintTouchesBegan];
         // Move
-        for (int j = 1; j<points_ter.count; j++) {
-            NSDictionary *point = points_ter[j];
-            currentPoint = CGPointMake([point[@"x"] floatValue], [point[@"y"] floatValue]);
-            [self paintTouchesMoved];
+        if (PaintWithGPU) {
+            for (int j = 1; j<points_ter.count; j++) {
+                NSDictionary *point = points_ter[j];
+                currentPoint = CGPointMake([point[@"x"] floatValue], [point[@"y"] floatValue]);
+                [self paintTouchesMoved];
+    
+                previousPoint1 = lastPoint;
+                lastPoint = currentPoint;
+            }
+            _slayer.path = _path.CGPath;
+            switch (i%5) {
+                case 0:
+                    _slayer.strokeColor = [UIColor colorWithWhite:0 alpha:1].CGColor;
+                    break;
+                case 1:
+                    _slayer.strokeColor = [UIColor redColor].CGColor;
+                    break;
+                case 2:
+                    _slayer.strokeColor = [UIColor blueColor].CGColor;
+                    break;
+                case 3:
+                    _slayer.strokeColor = [UIColor greenColor].CGColor;
+                    break;
+                case 4:
+                    _slayer.strokeColor = [UIColor yellowColor].CGColor;
+                default:
+                    break;
+            }
+            CABasicAnimation *pathAnimation = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+            pathAnimation = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+            pathAnimation.duration = 0.75;
+            pathAnimation.repeatCount = 1;
+            pathAnimation.fromValue = [NSNumber numberWithFloat:0.0f];
+            pathAnimation.toValue = [NSNumber numberWithFloat:1.0f];
+            [_slayer addAnimation:pathAnimation forKey:@"strokeEnd"];
             
-            previousPoint1 = lastPoint;
-            lastPoint = currentPoint;
+            // End
+            [self paintTouchesEnded];
         }
-        _slayer.path = _path.CGPath;
-        switch (i%5) {
-            case 0:
-                _slayer.strokeColor = [UIColor colorWithWhite:0 alpha:1].CGColor;
-                break;
-            case 1:
-                _slayer.strokeColor = [UIColor redColor].CGColor;
-                break;
-            case 2:
-                _slayer.strokeColor = [UIColor blueColor].CGColor;
-                break;
-            case 3:
-                _slayer.strokeColor = [UIColor greenColor].CGColor;
-                break;
-            case 4:
-                _slayer.strokeColor = [UIColor yellowColor].CGColor;
-            default:
-                break;
+        else {
+            j=0;
+            timer_point = [NSTimer scheduledTimerWithTimeInterval:1.0/points_ter.count target:self selector:@selector(move) userInfo:nil repeats:YES];
+            [[NSRunLoop mainRunLoop] addTimer:timer_point forMode:NSRunLoopCommonModes];
         }
-        CABasicAnimation *pathAnimation = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-        pathAnimation = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
-        pathAnimation.duration = 0.75;
-        pathAnimation.repeatCount = 1;
-        pathAnimation.fromValue = [NSNumber numberWithFloat:0.0f];
-        pathAnimation.toValue = [NSNumber numberWithFloat:1.0f];
-        [_slayer addAnimation:pathAnimation forKey:@"strokeEnd"];
-        // End
-        [self paintTouchesEnded];
-        
         i += 1;
     }];
     [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
 }
 
 - (void)move {
+    [timer setFireDate:[NSDate distantFuture]];
     if (j>=points_ter.count) {
+        // End
+        [self paintTouchesEnded];
+        // 重置参数
         j=0;
-        [link invalidate];
+        [timer_point invalidate];
+        timer_point = nil;
+        [timer setFireDate:[NSDate date]];
         return;
     }
     NSDictionary *point = points_ter[j];
